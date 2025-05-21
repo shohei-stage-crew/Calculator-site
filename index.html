@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>放送機材電力計算サイト</title>
+  <title>機材消費電力計算</title>
   <style>
     body { font-family: 'Segoe UI', sans-serif; margin: 20px; background: #f4f6f8; color: #333; }
-    label, select, button { margin: 5px 0; display: block; font-size: 14px; }
+    label, select, button, input { margin: 5px 0; display: block; font-size: 14px; }
     .tab { display: none; }
     .tab.active { display: block; }
     .tabs { margin-bottom: 15px; }
@@ -74,7 +74,8 @@
   </style>
 </head>
 <body>
-  <h2>昌平高校放送委員会　機材消費電力計算サイト</h2>
+  <h1>昌平高校放送委員会　機材消費電力計算サイト</h1>
+
   <div class="instructions">
     <h3>使い方の案内</h3>
     <ol>
@@ -82,8 +83,8 @@
       <li>追加した機材の一覧と合計消費電力が表示されます。</li>
       <li>「回路振り分け」タブで「回路を追加」ボタンを押すと、機材をチェックボックスで選択し、回路ごとの電力合計を確認できます。</li>
       <li>「ファイル出力」ボタンまたは🡇アイコンで、現在の構成をテキストファイルで保存できます。</li>
-      <li>消費電力の少ない機材は登録されていません</li>
     </ol>
+    <p><strong>※消費電力の少ない機材は登録されていません</strong></p>
   </div>
 
   <div class="tabs">
@@ -101,6 +102,9 @@
     <label>型番
       <select id="model"></select>
     </label>
+    <label>個数
+      <input type="number" id="quantity" value="1" min="1" />
+    </label>
     <button onclick="addEquipment()">機材を追加</button>
     <button onclick="exportToFile()">ファイル出力</button>
     <span class="download-icon" onclick="exportToFile()" title="ファイルを保存">🡇</span>
@@ -108,7 +112,7 @@
     <h3>追加された機材</h3>
     <table>
       <thead>
-        <tr><th>型番</th><th>消費電力(W)</th></tr>
+        <tr><th>型番</th><th>消費電力(W)</th><th>個数</th><th>合計(W)</th></tr>
       </thead>
       <tbody id="equipmentList"></tbody>
     </table>
@@ -160,6 +164,7 @@
     const categorySelect = document.getElementById('category');
     const subCategorySelect = document.getElementById('subCategory');
     const modelSelect = document.getElementById('model');
+    const quantityInput = document.getElementById('quantity');
     const equipmentList = document.getElementById('equipmentList');
     const totalPowerElem = document.getElementById('totalPower');
 
@@ -208,11 +213,23 @@
     function addEquipment() {
       const model = modelSelect.value;
       const power = data[categorySelect.value][subCategorySelect.value][model];
-      equipmentArray.push({ model, power });
+      const quantity = parseInt(quantityInput.value) || 1;
+      const total = power * quantity;
+      const equipment = { model, power, quantity };
+      equipmentArray.push(equipment);
+
       const row = document.createElement('tr');
-      row.innerHTML = `<td>${model}</td><td>${power}</td>`;
+      row.innerHTML = `<td>${model}</td><td>${power}</td><td>${quantity}</td><td>${total}</td>`;
+      row.addEventListener('click', () => {
+        equipmentArray = equipmentArray.filter(e => !(e.model === equipment.model && e.power === equipment.power && e.quantity === equipment.quantity));
+        row.remove();
+        totalPower -= total;
+        totalPowerElem.textContent = totalPower;
+        updateCircuits();
+      });
+
       equipmentList.appendChild(row);
-      totalPower += power;
+      totalPower += total;
       totalPowerElem.textContent = totalPower;
       updateCircuits();
     }
@@ -220,7 +237,6 @@
     function addCircuit() {
       const container = document.createElement('div');
       container.className = 'circuit';
-      const circuitId = 'circuit-' + document.querySelectorAll('.circuit').length;
       container.innerHTML = `
         <h4>回路</h4>
         <div class="checkboxes"></div>
@@ -239,9 +255,9 @@
       const selected = Array.from(checkboxesDiv.querySelectorAll('input:checked')).map(input => input.value);
       checkboxesDiv.innerHTML = '';
       equipmentArray.forEach((e, i) => {
-        const id = container.id + '-item-' + i;
+        const id = `circuit-${i}`;
         const div = document.createElement('div');
-        div.innerHTML = `<label><input type="checkbox" id="${id}" value="${e.power}" ${selected.includes(e.power.toString()) ? 'checked' : ''} onchange="calculateCircuitPower(this)">${e.model}</label>`;
+        div.innerHTML = `<label><input type="checkbox" id="${id}" value="${e.power * e.quantity}" ${selected.includes((e.power * e.quantity).toString()) ? 'checked' : ''} onchange="calculateCircuitPower(this)">${e.model}（${e.quantity}台）</label>`;
         checkboxesDiv.appendChild(div);
       });
       calculateCircuitPower(container);
@@ -263,7 +279,7 @@
     function exportToFile() {
       let content = '追加された機材一覧:\n';
       equipmentArray.forEach(e => {
-        content += `${e.model}: ${e.power}W\n`;
+        content += `${e.model} x${e.quantity}: ${e.power}W × ${e.quantity} = ${e.power * e.quantity}W\n`;
       });
       content += `\n合計消費電力: ${totalPower}W\n`;
       const blob = new Blob([content], { type: 'text/plain' });
