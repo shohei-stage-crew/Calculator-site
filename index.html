@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>放送機材電力計算サイト</title>
+  <style>
+    body { font-family: 'Segoe UI', sans-serif; margin: 20px; background: #f4f6f8; color: #333; }
+    label, select, button { margin: 5px 0; display: block; font-size: 14px; }
+    .tab { display: none; }
+    .tab.active { display: block; }
+    .tabs { margin-bottom: 15px; }
+    .tabs button {
+      margin-right: 10px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      background: #007acc;
+      color: white;
+      cursor: pointer;
+    }
+    .tabs button:hover { background: #005fa3; }
+    button {
+      padding: 6px 12px;
+      border: none;
+      border-radius: 4px;
+      background-color: #28a745;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover { background-color: #218838; }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 10px;
+      background: white;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 10px;
+      text-align: left;
+      font-size: 14px;
+    }
+    th { background: #e9ecef; }
+    .circuit {
+      margin-bottom: 10px;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 10px;
+      background: #fff;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .instructions {
+      background: #e8f0fe;
+      padding: 15px;
+      border-left: 5px solid #4285f4;
+      margin-bottom: 20px;
+      border-radius: 6px;
+    }
+    .download-icon {
+      display: inline-block;
+      cursor: pointer;
+      font-size: 18px;
+      margin-left: 10px;
+      vertical-align: middle;
+      color: #007acc;
+      user-select: none;
+    }
+    .download-icon:hover {
+      color: #005fa3;
+    }
+  </style>
+</head>
+<body>
+  <h2>昌平高校放送委員会　機材消費電力計算サイト</h2>
+  <div class="instructions">
+    <h3>使い方の案内</h3>
+    <ol>
+      <li>「機材追加」タブで、順にカテゴリー・中カテゴリー・型番を選び、機材を追加します。</li>
+      <li>追加した機材の一覧と合計消費電力が表示されます。</li>
+      <li>「回路振り分け」タブで「回路を追加」ボタンを押すと、機材をチェックボックスで選択し、回路ごとの電力合計を確認できます。</li>
+      <li>「ファイル出力」ボタンまたは🡇アイコンで、現在の構成をテキストファイルで保存できます。</li>
+      <li>消費電力の少ない機材は登録されていません</li>
+    </ol>
+  </div>
+
+  <div class="tabs">
+    <button onclick="switchTab('main')">機材追加</button>
+    <button onclick="switchTab('circuit')">回路振り分け</button>
+  </div>
+
+  <div id="main" class="tab active">
+    <label>大カテゴリー
+      <select id="category" onchange="populateSubCategory()"></select>
+    </label>
+    <label>中カテゴリー
+      <select id="subCategory" onchange="populateModel()"></select>
+    </label>
+    <label>型番
+      <select id="model"></select>
+    </label>
+    <button onclick="addEquipment()">機材を追加</button>
+    <button onclick="exportToFile()">ファイル出力</button>
+    <span class="download-icon" onclick="exportToFile()" title="ファイルを保存">🡇</span>
+
+    <h3>追加された機材</h3>
+    <table>
+      <thead>
+        <tr><th>型番</th><th>消費電力(W)</th></tr>
+      </thead>
+      <tbody id="equipmentList"></tbody>
+    </table>
+    <p><strong>合計消費電力: <span id="totalPower">0</span> W</strong></p>
+  </div>
+
+  <div id="circuit" class="tab">
+    <button onclick="addCircuit()">回路を追加</button>
+    <div id="circuits"></div>
+  </div>
+
+  <script>
+    const data = {
+      '音響': {
+        'ミキサー': {
+          'M7CL-48（YAMAHA）': 300,
+          'XR16（BEHRINGER）': 30
+        },
+        'アンプ': {
+          'PX5（YAMAHA）': 575,
+          'PX8（YAMAHA）': 700,
+          'DA-250F（TOA）': 1200,
+          'DA-150F（TOA）': 800
+        },
+        'パワードスピーカー': {
+          'DBR15（YAMAHA）': 185,
+          'IRX108（JBL）': 80,
+          'M15B（TurboSound）': 700,
+          'F1320D（BEHRINGER）': 300
+        }
+      },
+      '照明': {
+        'PARライト': {
+          'H-PAR（StageEvolution）': 120,
+          'PAR-Z（ADJ）': 115
+        },
+        'バーライト': {
+          'MEGA-BER（ADJ）': 32
+        },
+        'ムービングヘッド': {
+          'Pocket-Pro（ADJ）': 53
+        },
+        'スモークマシン': {
+          'スモークマシン（StageEvolution）': 1300
+        }
+      }
+    };
+
+    const categorySelect = document.getElementById('category');
+    const subCategorySelect = document.getElementById('subCategory');
+    const modelSelect = document.getElementById('model');
+    const equipmentList = document.getElementById('equipmentList');
+    const totalPowerElem = document.getElementById('totalPower');
+
+    let totalPower = 0;
+    let equipmentArray = [];
+
+    function switchTab(id) {
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      document.getElementById(id).classList.add('active');
+    }
+
+    function populateCategory() {
+      for (const cat in data) {
+        const option = document.createElement('option');
+        option.value = cat;
+        option.textContent = cat;
+        categorySelect.appendChild(option);
+      }
+      populateSubCategory();
+    }
+
+    function populateSubCategory() {
+      subCategorySelect.innerHTML = '';
+      modelSelect.innerHTML = '';
+      const subCategories = data[categorySelect.value];
+      for (const sub in subCategories) {
+        const option = document.createElement('option');
+        option.value = sub;
+        option.textContent = sub;
+        subCategorySelect.appendChild(option);
+      }
+      populateModel();
+    }
+
+    function populateModel() {
+      modelSelect.innerHTML = '';
+      const models = data[categorySelect.value][subCategorySelect.value];
+      for (const model in models) {
+        const option = document.createElement('option');
+        option.value = model;
+        option.textContent = model;
+        modelSelect.appendChild(option);
+      }
+    }
+
+    function addEquipment() {
+      const model = modelSelect.value;
+      const power = data[categorySelect.value][subCategorySelect.value][model];
+      equipmentArray.push({ model, power });
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${model}</td><td>${power}</td>`;
+      equipmentList.appendChild(row);
+      totalPower += power;
+      totalPowerElem.textContent = totalPower;
+      updateCircuits();
+    }
+
+    function addCircuit() {
+      const container = document.createElement('div');
+      container.className = 'circuit';
+      const circuitId = 'circuit-' + document.querySelectorAll('.circuit').length;
+      container.innerHTML = `
+        <h4>回路</h4>
+        <div class="checkboxes"></div>
+        <p>合計: <span>0</span> W</p>
+      `;
+      document.getElementById('circuits').appendChild(container);
+      updateCircuitCheckboxes(container);
+    }
+
+    function updateCircuits() {
+      document.querySelectorAll('.circuit').forEach(container => updateCircuitCheckboxes(container));
+    }
+
+    function updateCircuitCheckboxes(container) {
+      const checkboxesDiv = container.querySelector('.checkboxes');
+      const selected = Array.from(checkboxesDiv.querySelectorAll('input:checked')).map(input => input.value);
+      checkboxesDiv.innerHTML = '';
+      equipmentArray.forEach((e, i) => {
+        const id = container.id + '-item-' + i;
+        const div = document.createElement('div');
+        div.innerHTML = `<label><input type="checkbox" id="${id}" value="${e.power}" ${selected.includes(e.power.toString()) ? 'checked' : ''} onchange="calculateCircuitPower(this)">${e.model}</label>`;
+        checkboxesDiv.appendChild(div);
+      });
+      calculateCircuitPower(container);
+    }
+
+    function calculateCircuitPower(arg) {
+      let container;
+      if (arg.classList.contains('circuit')) {
+        container = arg;
+      } else {
+        container = arg.closest('.circuit');
+      }
+      if (!container) return;
+      let sum = 0;
+      container.querySelectorAll('input:checked').forEach(input => sum += parseInt(input.value));
+      container.querySelector('p span').textContent = sum;
+    }
+
+    function exportToFile() {
+      let content = '追加された機材一覧:\n';
+      equipmentArray.forEach(e => {
+        content += `${e.model}: ${e.power}W\n`;
+      });
+      content += `\n合計消費電力: ${totalPower}W\n`;
+      const blob = new Blob([content], { type: 'text/plain' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = '機材消費電力.txt';
+      link.click();
+    }
+
+    populateCategory();
+  </script>
+</body>
+</html>
